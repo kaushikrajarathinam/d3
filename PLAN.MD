@@ -71,3 +71,4 @@ Play the game of 2048 outside by waking and collecting tokens!
 - [x] Add a “New Game” button to clear saved state and reset the world
 - [x] Make sure `redrawCells()` works with both movement modes and restored state
 - [x] Added a new div block to render a nice clean box for all the buttons.
+- [x] Make near by tiles highlighted orange.

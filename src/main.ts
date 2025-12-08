@@ -28,13 +28,12 @@ let held: number | null = null;
 let won = false;
 
 let cellLayers: leaflet.Layer[] = [];
-let movement: MovementFacade;
 
 // DOM
 const controlPanelDiv = document.createElement("div");
 controlPanelDiv.id = "controlPanel";
 
-// CONTROL PANEL MENU!!!+
+// CONTROL PANEL MENU
 Object.assign(controlPanelDiv.style, {
   position: "absolute",
   top: "8px",
@@ -76,11 +75,19 @@ controlPanelDiv.innerHTML = `
   <div>Target value: <span id="target-value">${WIN_VALUE}</span></div>
 `;
 
-// movement buttons
+// movement buttons container
 const moveDiv = document.createElement("div");
 moveDiv.id = "move-buttons";
-moveDiv.textContent = "Move: ";
 moveDiv.style.marginTop = "4px";
+moveDiv.style.display = "flex";
+moveDiv.style.alignItems = "center";
+moveDiv.style.flexWrap = "wrap";
+moveDiv.style.columnGap = "2px";
+
+const moveLabel = document.createElement("span");
+moveLabel.textContent = "Move:";
+moveDiv.appendChild(moveLabel);
+
 controlPanelDiv.appendChild(moveDiv);
 
 // toggle movement mode button
@@ -110,7 +117,11 @@ newGameButton.onclick = () => {
 };
 controlPanelDiv.appendChild(newGameButton);
 
-// HELPERS
+// STATUS DEFAULT MESSAGE
+statusPanelDiv.textContent =
+  "Move with buttons or geolocation; click nearby cells to pick up, drop, or combine tokens.";
+
+// ---- BUTTON HELPER + BUTTON CREATION ----
 function addMoveButton(label: string, di: number, dj: number) {
   const btn = document.createElement("button");
   btn.textContent = label;
@@ -124,9 +135,7 @@ addMoveButton("↓", -1, 0);
 addMoveButton("←", 0, -1);
 addMoveButton("→", 0, 1);
 
-statusPanelDiv.textContent =
-  "Move with buttons or geolocation; click nearby cells to pick up, drop, or combine tokens.";
-
+// HELPERS
 function key(i: number, j: number) {
   return `${i},${j}`;
 }
@@ -496,7 +505,7 @@ function createMovementFacade(): MovementFacade {
 }
 
 // attach facade now that map/player exist
-movement = createMovementFacade();
+const movement = createMovementFacade();
 
 // toggle movement mode button behavior
 toggleButton.onclick = () => {
