@@ -6,6 +6,8 @@ For this, I wrote in main.ts so the core of the game is a Leaflet map centered o
 
 ## D3.b: Globe-spanning Gameplay
 
+For this, i extended the game so the player can move across a world sized grid instead of being fixed in place. I anchored the coords system at (0,0) abd ysed latLngTocell + celltoLatLng so movement happens in discrete grid steps. I put some movement buttons that shift the player one cell in all 4 directions and recenters the map upon clicking. Token spawns are now different, still use luck, but they now spawn as 2 and 4s to be similar to the 2048, B requirement met where I made cells forget their state if they are moved off the map. The win condition is raised to 128.
+
 ## D3.c: Object persistence
 
 ## D3.d: Gameplay Across Real-world Space and Time

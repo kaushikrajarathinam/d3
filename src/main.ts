@@ -6,12 +6,12 @@ import luck from "./_luck.ts";
 import "./style.css";
 
 // CONFIG
-const CLASSROOM = leaflet.latLng(36.997936938057016, -122.05703507501151);
 const CELL_SIZE = 1e-4;
 const NEAR_RADIUS = 3;
 const SPAWN_CHANCE = 0.25;
-const WIN_VALUE = 16;
-const GRID_RANGE = 25; // how many cells in each direction from center
+const WIN_VALUE = 128; // increased target here
+const GRID_RANGE = 25;
+const NULL_ISLAND = leaflet.latLng(0, 0);
 
 // TYPES / STATE
 type CellIndex = { i: number; j: number };
@@ -40,7 +40,26 @@ controlPanelDiv.innerHTML = `
   <div>Target value: <span id="target-value">${WIN_VALUE}</span></div>
 `;
 
-statusPanelDiv.textContent = "Click a nearby cell with a token to pick it up.";
+// movement buttons
+const moveDiv = document.createElement("div");
+moveDiv.id = "move-buttons";
+moveDiv.textContent = "Move: ";
+controlPanelDiv.appendChild(moveDiv);
+
+function addMoveButton(label: string, di: number, dj: number) {
+  const btn = document.createElement("button");
+  btn.textContent = label;
+  btn.onclick = () => movePlayer(di, dj);
+  moveDiv.appendChild(btn);
+}
+
+addMoveButton("↑", 1, 0);
+addMoveButton("↓", -1, 0);
+addMoveButton("←", 0, -1);
+addMoveButton("→", 0, 1);
+
+statusPanelDiv.textContent =
+  "Use the arrows to move; click nearby cells with tokens to pick up, drop, or combine.";
 
 // HELPERS
 function key(i: number, j: number) {
@@ -49,22 +68,36 @@ function key(i: number, j: number) {
 
 function latLngToCell(lat: number, lng: number): CellIndex {
   return {
-    i: Math.floor(lat / CELL_SIZE),
-    j: Math.floor(lng / CELL_SIZE),
+    i: Math.floor((lat - NULL_ISLAND.lat) / CELL_SIZE),
+    j: Math.floor((lng - NULL_ISLAND.lng) / CELL_SIZE),
   };
 }
 
-const PLAYER_CELL = latLngToCell(CLASSROOM.lat, CLASSROOM.lng);
+function cellToLatLng(i: number, j: number): leaflet.LatLng {
+  return leaflet.latLng(
+    NULL_ISLAND.lat + (i + 0.5) * CELL_SIZE,
+    NULL_ISLAND.lng + (j + 0.5) * CELL_SIZE,
+  );
+}
+
+function getPlayerCell(): CellIndex {
+  const p = player.getLatLng();
+  return latLngToCell(p.lat, p.lng);
+}
 
 function inRange(i: number, j: number) {
-  const di = Math.abs(i - PLAYER_CELL.i);
-  const dj = Math.abs(j - PLAYER_CELL.j);
+  const pc = getPlayerCell();
+  const di = Math.abs(i - pc.i);
+  const dj = Math.abs(j - pc.j);
   return Math.max(di, dj) <= NEAR_RADIUS;
 }
 
+// spawn 2 or 4
 function spawnToken(i: number, j: number): number | null {
   const r = luck([i, j, "spawn"].toString());
-  return r < SPAWN_CHANCE ? 1 : null;
+  if (r >= SPAWN_CHANCE) return null;
+  const fourChance = SPAWN_CHANCE * 0.2;
+  return r < fourChance ? 4 : 2;
 }
 
 function getToken(i: number, j: number): number | null {
@@ -75,6 +108,21 @@ function getToken(i: number, j: number): number | null {
 
 function setToken(i: number, j: number, value: number | null) {
   changedCells.set(key(i, j), value);
+}
+
+// “forget” modifications that go offscreen
+function trimChangedCells(
+  iMin: number,
+  iMax: number,
+  jMin: number,
+  jMax: number,
+) {
+  for (const k of Array.from(changedCells.keys())) {
+    const [si, sj] = k.split(",").map(Number);
+    if (si < iMin || si > iMax || sj < jMin || sj > jMax) {
+      changedCells.delete(k);
+    }
+  }
 }
 
 function setStatus(msg: string) {
@@ -96,6 +144,17 @@ function checkWin() {
   }
 }
 
+// MOVEMENT
+function movePlayer(di: number, dj: number) {
+  const pc = getPlayerCell();
+  const newI = pc.i + di;
+  const newJ = pc.j + dj;
+  const newPos = cellToLatLng(newI, newJ);
+  player.setLatLng(newPos);
+  map.panTo(newPos);
+  redrawCells();
+}
+
 // CELL INTERACTION
 function clickCell(i: number, j: number) {
   if (!inRange(i, j)) {
@@ -105,6 +164,7 @@ function clickCell(i: number, j: number) {
 
   const cellValue = getToken(i, j);
 
+  // not holding anything: pick up if there is a token
   if (held === null) {
     if (cellValue === null) {
       setStatus("No token here.");
@@ -119,27 +179,37 @@ function clickCell(i: number, j: number) {
     return;
   }
 
-  if (cellValue === held && cellValue !== null) {
-    const newValue = held * 2;
-    held = newValue;
-    setToken(i, j, null);
+  // holding something, cell empty -->drop it
+  if (cellValue === null) {
+    setToken(i, j, held);
+    setStatus(`Placed token value ${held}.`);
+    held = null;
     updateHeldUI();
-    setStatus(`Crafted token value ${newValue}.`);
+    redrawCells();
+    return;
+  }
+
+  // holding something, cell has same value-->combine
+  if (cellValue === held) {
+    const newValue = held * 2;
+    setToken(i, j, newValue);
+    held = null;
+    updateHeldUI();
+    setStatus(`Combined into token value ${newValue}.`);
     redrawCells();
     checkWin();
-  } else if (cellValue === null) {
-    setStatus("You can only combine with a matching token.");
-  } else {
-    setStatus(`Cannot combine ${held} with ${cellValue}.`);
+    return;
   }
+
+  setStatus(`Cannot combine held ${held} with cell ${cellValue}.`);
 }
 
 // RENDERING
 function drawCell(i: number, j: number): leaflet.Layer {
-  const lat0 = i * CELL_SIZE;
-  const lat1 = (i + 1) * CELL_SIZE;
-  const lng0 = j * CELL_SIZE;
-  const lng1 = (j + 1) * CELL_SIZE;
+  const lat0 = NULL_ISLAND.lat + i * CELL_SIZE;
+  const lat1 = NULL_ISLAND.lat + (i + 1) * CELL_SIZE;
+  const lng0 = NULL_ISLAND.lng + j * CELL_SIZE;
+  const lng1 = NULL_ISLAND.lng + (j + 1) * CELL_SIZE;
 
   const value = getToken(i, j);
   const hasToken = value !== null;
@@ -182,6 +252,8 @@ function redrawCells() {
   const jMin = centerCell.j - GRID_RANGE;
   const jMax = centerCell.j + GRID_RANGE;
 
+  trimChangedCells(iMin, iMax, jMin, jMax);
+
   for (let i = iMin; i <= iMax; i++) {
     for (let j = jMin; j <= jMax; j++) {
       cellLayers.push(drawCell(i, j));
@@ -190,20 +262,22 @@ function redrawCells() {
 }
 
 // MAP SETUP
+const CLASSROOM = leaflet.latLng(36.997936938057016, -122.05703507501151);
+
 const map = leaflet.map(mapDiv, {
   center: CLASSROOM,
   zoom: 19,
   minZoom: 19,
   maxZoom: 19,
   zoomControl: false,
-  scrollWheelZoom: false,
+  scrollWheelZoom: true, // scroll to look around without moving player
 });
 
 leaflet
   .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution:
-      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   })
   .addTo(map);
 

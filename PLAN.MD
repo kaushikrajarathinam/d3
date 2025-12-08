@@ -26,3 +26,18 @@ Play the game of 2048 outside by waking and collecting tokens!
 - [x] Implement crafting by combining equal tokens
 - [x] Detect win when crafted value reaches target
 - [x] Cleanup pass to simplify code
+
+### D3.b: Globe-spanning gameplay
+
+#### Steps
+
+- [x] Add movement buttons to move player across the map
+- [x] Use earth-spanning grid
+- [x] Redraw grid as the map scrolls around the player
+- [x] Spawn tokens anywhere using `luck()` (2 or 4 values to match 2048)
+- [x] Keep interaction limited to nearby cells
+- [x] pickup, drop, and combine actions while moving
+- [x] win goal to higher value --> 128
+- [x] Forget off-screen cell state
+- [] Fix lag.
+- [x] Cleanup code for readability
