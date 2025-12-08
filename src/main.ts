@@ -5,7 +5,7 @@ import "./_leafletWorkaround.ts";
 import luck from "./_luck.ts";
 import "./style.css";
 
-// CONFIG
+// CONFIG - fixed
 const CELL_SIZE = 1e-4;
 const NEAR_RADIUS = 3;
 const SPAWN_CHANCE = 0.25;
