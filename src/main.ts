@@ -331,7 +331,7 @@ function saveMovementMode(mode: MovementMode) {
   }
 }
 
-function loadMovementMode(): MovementMode | null {
+function _loadMovementMode(): MovementMode | null {
   const raw = localStorage.getItem(STORAGE_MOVEMENT);
   if (raw === "geo" || raw === "buttons") return raw;
   return null;
