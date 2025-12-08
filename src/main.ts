@@ -20,8 +20,6 @@ const changedCells = new Map<string, number | null>();
 let held: number | null = null;
 let won = false;
 
-let map: leaflet.Map;
-let player: leaflet.Marker;
 let cellLayers: leaflet.Layer[] = [];
 
 // DOM
@@ -192,7 +190,7 @@ function redrawCells() {
 }
 
 // MAP SETUP
-map = leaflet.map(mapDiv, {
+const map = leaflet.map(mapDiv, {
   center: CLASSROOM,
   zoom: 19,
   minZoom: 19,
@@ -209,7 +207,7 @@ leaflet
   })
   .addTo(map);
 
-player = leaflet.marker(CLASSROOM);
+const player = leaflet.marker(CLASSROOM);
 player.bindTooltip("That's you!");
 player.addTo(map);
 
