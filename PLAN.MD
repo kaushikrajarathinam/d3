@@ -46,10 +46,6 @@ Play the game of 2048 outside by waking and collecting tokens!
 
 #### Steps
 
-### D3.c: Object persistence
-
-#### Steps
-
 - [x] Keep using earth-spanning grid anchored at 0,0
 - [x] Store only modified cells in a `Map` (`changedCells`)
 - [x] Use `getToken` to merge default luck-based spawn with saved state
@@ -59,3 +55,19 @@ Play the game of 2048 outside by waking and collecting tokens!
 - [x] Keep movement buttons and interaction rules from previous
 - [x] Raise win target again for D3.c playtesting
 - [x] Cleanup pass and add comments showing memento.
+
+### D3.d: Gameplay across real-world space and time
+
+#### Steps
+
+- [x] Add localStorage keys for cells, held token, player position, and movement mode
+- [x] Save and load `changedCells` so crafted tokens persist across reloads
+- [x] Save and load the held token value and show it in the UI
+- [x] Save and load the player’s last position and restore it on page load
+- [x] Define a `MovementFacade` interface (`step`, `useButtons`, `useGeolocation`)
+- [x] Implement button-based movement using grid steps through the facade
+- [x] Implement geolocation movement using `watchPosition` and snap to nearest cell
+- [x] Add a toggle button to switch between button and geolocation modes and persist choice
+- [x] Add a “New Game” button to clear saved state and reset the world
+- [x] Make sure `redrawCells()` works with both movement modes and restored state
+- [x] Added a new div block to render a nice clean box for all the buttons.

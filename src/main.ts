@@ -6,27 +6,49 @@ import luck from "./_luck.ts";
 import "./style.css";
 
 // CONFIG
-
 const CELL_SIZE = 1e-4;
 const NEAR_RADIUS = 3;
 const SPAWN_CHANCE = 0.25;
-const WIN_VALUE = 256;
+const WIN_VALUE = 2048;
 const GRID_RANGE = 15;
 const NULL_ISLAND = leaflet.latLng(0, 0);
 
+// STORAGE KEYS
+const STORAGE_CELLS = "worldOfBits.cells";
+const STORAGE_HELD = "worldOfBits.held";
+const STORAGE_PLAYER = "worldOfBits.player";
+const STORAGE_MOVEMENT = "worldOfBits.movement";
+
 // TYPES / STATE
 type CellIndex = { i: number; j: number };
+type MovementMode = "buttons" | "geo";
 
 const changedCells = new Map<string, number | null>();
-
 let held: number | null = null;
 let won = false;
 
 let cellLayers: leaflet.Layer[] = [];
+let movement: MovementFacade;
 
 // DOM
 const controlPanelDiv = document.createElement("div");
 controlPanelDiv.id = "controlPanel";
+
+// CONTROL PANEL MENU!!!+
+Object.assign(controlPanelDiv.style, {
+  position: "absolute",
+  top: "8px",
+  left: "8px",
+  zIndex: "1000",
+  display: "flex",
+  flexDirection: "column",
+  rowGap: "4px",
+  padding: "6px 8px",
+  backgroundColor: "rgba(255, 255, 255, 0.95)",
+  borderRadius: "4px",
+  fontFamily: "sans-serif",
+  fontSize: "12px",
+});
 document.body.append(controlPanelDiv);
 
 const mapDiv = document.createElement("div");
@@ -35,6 +57,18 @@ document.body.append(mapDiv);
 
 const statusPanelDiv = document.createElement("div");
 statusPanelDiv.id = "statusPanel";
+Object.assign(statusPanelDiv.style, {
+  position: "absolute",
+  left: "8px",
+  bottom: "8px",
+  zIndex: "900",
+  padding: "6px 8px",
+  maxWidth: "320px",
+  backgroundColor: "rgba(255, 255, 255, 0.9)",
+  borderRadius: "4px",
+  fontFamily: "sans-serif",
+  fontSize: "12px",
+});
 document.body.append(statusPanelDiv);
 
 controlPanelDiv.innerHTML = `
@@ -42,19 +76,46 @@ controlPanelDiv.innerHTML = `
   <div>Target value: <span id="target-value">${WIN_VALUE}</span></div>
 `;
 
-statusPanelDiv.textContent =
-  "Use the arrows to move; click nearby cells with tokens to pick up, drop, or combine.";
-
 // movement buttons
 const moveDiv = document.createElement("div");
 moveDiv.id = "move-buttons";
 moveDiv.textContent = "Move: ";
+moveDiv.style.marginTop = "4px";
 controlPanelDiv.appendChild(moveDiv);
 
+// toggle movement mode button
+const toggleButton = document.createElement("button");
+toggleButton.id = "movement-toggle";
+toggleButton.style.marginTop = "4px";
+controlPanelDiv.appendChild(toggleButton);
+
+// new game button
+const newGameButton = document.createElement("button");
+newGameButton.id = "new-game";
+newGameButton.textContent = "New Game";
+newGameButton.style.marginTop = "4px";
+newGameButton.onclick = () => {
+  if (!confirm("Start a new game and clear saved progress?")) return;
+  localStorage.removeItem(STORAGE_CELLS);
+  localStorage.removeItem(STORAGE_HELD);
+  localStorage.removeItem(STORAGE_PLAYER);
+  localStorage.removeItem(STORAGE_MOVEMENT);
+  changedCells.clear();
+  held = null;
+  won = false;
+  updateHeldUI();
+  applyPlayerPosition(CLASSROOM);
+  setStatus("New game started.");
+  redrawCells();
+};
+controlPanelDiv.appendChild(newGameButton);
+
+// HELPERS
 function addMoveButton(label: string, di: number, dj: number) {
   const btn = document.createElement("button");
   btn.textContent = label;
-  btn.onclick = () => movePlayer(di, dj);
+  btn.style.marginLeft = "2px";
+  btn.onclick = () => movement.step(di, dj);
   moveDiv.appendChild(btn);
 }
 
@@ -63,7 +124,9 @@ addMoveButton("↓", -1, 0);
 addMoveButton("←", 0, -1);
 addMoveButton("→", 0, 1);
 
-// HELPERS
+statusPanelDiv.textContent =
+  "Move with buttons or geolocation; click nearby cells to pick up, drop, or combine tokens.";
+
 function key(i: number, j: number) {
   return `${i},${j}`;
 }
@@ -82,6 +145,31 @@ function cellToLatLng(i: number, j: number): leaflet.LatLng {
   );
 }
 
+// MAP + PLAYER SETUP
+const CLASSROOM = leaflet.latLng(36.997936938057016, -122.05703507501151);
+
+const map = leaflet.map(mapDiv, {
+  center: CLASSROOM,
+  zoom: 19,
+  minZoom: 19,
+  maxZoom: 19,
+  zoomControl: false,
+  scrollWheelZoom: true,
+});
+
+leaflet
+  .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  })
+  .addTo(map);
+
+const player = leaflet.marker(CLASSROOM);
+player.bindTooltip("That's you!");
+player.addTo(map);
+
+// POSITION HELPERS
 function getPlayerCell(): CellIndex {
   const p = player.getLatLng();
   return latLngToCell(p.lat, p.lng);
@@ -94,7 +182,27 @@ function inRange(i: number, j: number) {
   return Math.max(di, dj) <= NEAR_RADIUS;
 }
 
-// Spawn 2 or 4, like 2048 (rare 4)
+function applyPlayerPosition(pos: leaflet.LatLng) {
+  player.setLatLng(pos);
+  map.setView(pos, map.getZoom(), { animate: false });
+  savePlayerPosition(pos);
+}
+
+function movePlayerByStep(di: number, dj: number) {
+  const pc = getPlayerCell();
+  const newI = pc.i + di;
+  const newJ = pc.j + dj;
+  const newPos = cellToLatLng(newI, newJ);
+  applyPlayerPosition(newPos);
+}
+
+function movePlayerToGeo(lat: number, lng: number) {
+  const cell = latLngToCell(lat, lng);
+  const snapped = cellToLatLng(cell.i, cell.j);
+  applyPlayerPosition(snapped);
+}
+
+// TOKEN SPAWNING / STATE
 function spawnToken(i: number, j: number): number | null {
   const r = luck([i, j, "spawn"].toString());
   if (r >= SPAWN_CHANCE) return null;
@@ -102,7 +210,6 @@ function spawnToken(i: number, j: number): number | null {
   return r < fourChance ? 4 : 2;
 }
 
-// memento lookup
 function getToken(i: number, j: number): number | null {
   const k = key(i, j);
   if (changedCells.has(k)) return changedCells.get(k) ?? null;
@@ -111,6 +218,7 @@ function getToken(i: number, j: number): number | null {
 
 function setToken(i: number, j: number, value: number | null) {
   changedCells.set(key(i, j), value);
+  saveCells();
 }
 
 function setStatus(msg: string) {
@@ -132,16 +240,89 @@ function checkWin() {
   }
 }
 
-// MOVEMENT
-function movePlayer(di: number, dj: number) {
-  const pc = getPlayerCell();
-  const newI = pc.i + di;
-  const newJ = pc.j + dj;
-  const newPos = cellToLatLng(newI, newJ);
+// PERSISTENCE
+function saveCells() {
+  const payload: Array<{ key: string; value: number | null }> = [];
+  for (const [k, v] of changedCells.entries()) {
+    payload.push({ key: k, value: v });
+  }
+  try {
+    localStorage.setItem(STORAGE_CELLS, JSON.stringify(payload));
+  } catch {
+    // ignore storage errors
+  }
+}
 
-  // Move the player marker and keep camera centered
-  player.setLatLng(newPos);
-  map.setView(newPos, map.getZoom(), { animate: false });
+function loadCells() {
+  try {
+    const raw = localStorage.getItem(STORAGE_CELLS);
+    if (!raw) return;
+    const payload = JSON.parse(raw) as Array<
+      { key: string; value: number | null }
+    >;
+    changedCells.clear();
+    for (const entry of payload) {
+      changedCells.set(entry.key, entry.value);
+    }
+  } catch {
+    // ignore parse errors
+  }
+}
+
+function saveHeld() {
+  try {
+    localStorage.setItem(STORAGE_HELD, JSON.stringify(held));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function loadHeld() {
+  try {
+    const raw = localStorage.getItem(STORAGE_HELD);
+    if (!raw) return;
+    const v = JSON.parse(raw) as number | null;
+    held = v ?? null;
+  } catch {
+    held = null;
+  }
+}
+
+function savePlayerPosition(pos: leaflet.LatLng) {
+  try {
+    localStorage.setItem(
+      STORAGE_PLAYER,
+      JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+    );
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function loadPlayerPosition(): leaflet.LatLng | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_PLAYER);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as { lat: number; lng: number } | null;
+    if (!p) return null;
+    return leaflet.latLng(p.lat, p.lng);
+  } catch {
+    return null;
+  }
+}
+
+function saveMovementMode(mode: MovementMode) {
+  try {
+    localStorage.setItem(STORAGE_MOVEMENT, mode);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function loadMovementMode(): MovementMode | null {
+  const raw = localStorage.getItem(STORAGE_MOVEMENT);
+  if (raw === "geo" || raw === "buttons") return raw;
+  return null;
 }
 
 // CELL INTERACTION
@@ -153,7 +334,6 @@ function clickCell(i: number, j: number) {
 
   const cellValue = getToken(i, j);
 
-  // Not holding anything: pick up if there is a token
   if (held === null) {
     if (cellValue === null) {
       setStatus("No token here.");
@@ -161,6 +341,7 @@ function clickCell(i: number, j: number) {
     }
     held = cellValue;
     setToken(i, j, null);
+    saveHeld();
     updateHeldUI();
     setStatus(`Picked up token value ${held}.`);
     redrawCells();
@@ -168,21 +349,21 @@ function clickCell(i: number, j: number) {
     return;
   }
 
-  // Holding something, cell empty: drop it
   if (cellValue === null) {
     setToken(i, j, held);
     setStatus(`Placed token value ${held}.`);
     held = null;
+    saveHeld();
     updateHeldUI();
     redrawCells();
     return;
   }
 
-  // Holding something, cell has same value: combine (2048-style)
   if (cellValue === held) {
     const newValue = held * 2;
     setToken(i, j, newValue);
     held = null;
+    saveHeld();
     updateHeldUI();
     setStatus(`Combined into token value ${newValue}.`);
     redrawCells();
@@ -202,6 +383,7 @@ function drawCell(i: number, j: number): leaflet.Layer {
 
   const value = getToken(i, j);
   const hasToken = value !== null;
+  const isNear = hasToken && inRange(i, j);
 
   const rect = leaflet.rectangle(
     [
@@ -211,12 +393,11 @@ function drawCell(i: number, j: number): leaflet.Layer {
     {
       color: "#777",
       weight: 1,
-      fillColor: hasToken ? "#88ccff" : "#eeeeee",
-      fillOpacity: hasToken ? 0.5 : 0.15,
+      fillColor: hasToken ? (isNear ? "#ffcc88" : "#88ccff") : "#eeeeee",
+      fillOpacity: hasToken ? (isNear ? 0.8 : 0.5) : 0.15,
     },
   );
 
-  // Show numbers on all token cells
   if (hasToken) {
     rect.bindTooltip(String(value), {
       permanent: true,
@@ -249,33 +430,106 @@ function redrawCells() {
   }
 }
 
-// MAP SETUP
-const CLASSROOM = leaflet.latLng(36.997936938057016, -122.05703507501151);
+// MOVEMENT FACADE
+interface MovementFacade {
+  step(di: number, dj: number): void;
+  useButtons(): void;
+  useGeolocation(): void;
+}
 
-const map = leaflet.map(mapDiv, {
-  center: CLASSROOM,
-  zoom: 19,
-  minZoom: 19,
-  maxZoom: 19,
-  zoomControl: false,
-  scrollWheelZoom: true,
-});
+function createMovementFacade(): MovementFacade {
+  let mode: MovementMode = "buttons";
+  let geoWatchId: number | null = null;
 
-leaflet
-  .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  })
-  .addTo(map);
+  function stopGeo() {
+    if (geoWatchId !== null && "geolocation" in navigator) {
+      navigator.geolocation.clearWatch(geoWatchId);
+      geoWatchId = null;
+    }
+  }
 
-const player = leaflet.marker(CLASSROOM);
-player.bindTooltip("That's you!");
-player.addTo(map);
+  function startGeo() {
+    if (!("geolocation" in navigator)) {
+      setStatus("Geolocation is not available in this browser.");
+      return;
+    }
+    stopGeo();
+    geoWatchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        movePlayerToGeo(pos.coords.latitude, pos.coords.longitude);
+        redrawCells();
+      },
+      (err) => {
+        console.warn("Geolocation error:", err);
+        setStatus("Geolocation error; falling back to buttons.");
+        movement.useButtons();
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
+    );
+  }
 
+  return {
+    step(di, dj) {
+      if (mode !== "buttons") return;
+      movePlayerByStep(di, dj);
+      redrawCells();
+    },
+
+    useButtons() {
+      mode = "buttons";
+      stopGeo();
+      moveDiv.style.display = "";
+      toggleButton.textContent = "Use Geolocation";
+      saveMovementMode(mode);
+      setStatus("Button movement enabled.");
+    },
+
+    useGeolocation() {
+      mode = "geo";
+      moveDiv.style.display = "none";
+      toggleButton.textContent = "Use Buttons";
+      saveMovementMode(mode);
+      setStatus("Geolocation movement enabled.");
+      startGeo();
+    },
+  };
+}
+
+// attach facade now that map/player exist
+movement = createMovementFacade();
+
+// toggle movement mode button behavior
+toggleButton.onclick = () => {
+  const saved = loadMovementMode();
+  if (saved === "geo") {
+    movement.useButtons();
+  } else {
+    movement.useGeolocation();
+  }
+};
+
+// redraw when map moves
 map.on("moveend", redrawCells);
 
+// INITIAL LOAD
 map.whenReady(() => {
-  redrawCells();
+  loadCells();
+  loadHeld();
   updateHeldUI();
+
+  const savedPos = loadPlayerPosition();
+  if (savedPos) {
+    applyPlayerPosition(savedPos);
+  } else {
+    applyPlayerPosition(CLASSROOM);
+  }
+
+  redrawCells();
+
+  const mode = loadMovementMode() ?? "buttons";
+  if (mode === "geo") {
+    movement.useGeolocation();
+  } else {
+    movement.useButtons();
+  }
 });
