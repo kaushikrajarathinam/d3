@@ -29,6 +29,9 @@ let won = false;
 
 let cellLayers: leaflet.Layer[] = [];
 
+// track current movement mode; default to "geo"
+let currentMode: MovementMode = "geo";
+
 // DOM
 const controlPanelDiv = document.createElement("div");
 controlPanelDiv.id = "controlPanel";
@@ -119,7 +122,7 @@ controlPanelDiv.appendChild(newGameButton);
 
 // STATUS DEFAULT MESSAGE
 statusPanelDiv.textContent =
-  "Move with buttons or geolocation; click nearby cells to pick up, drop, or combine tokens.";
+  "Move with geolocation (default) or buttons; click nearby cells to pick up, drop, or combine tokens.";
 
 // ---- BUTTON HELPER + BUTTON CREATION ----
 function addMoveButton(label: string, di: number, dj: number) {
@@ -447,7 +450,7 @@ interface MovementFacade {
 }
 
 function createMovementFacade(): MovementFacade {
-  let mode: MovementMode = "buttons";
+  let mode: MovementMode = "buttons"; // internal default; we control real mode via currentMode
   let geoWatchId: number | null = null;
 
   function stopGeo() {
@@ -486,18 +489,20 @@ function createMovementFacade(): MovementFacade {
 
     useButtons() {
       mode = "buttons";
+      currentMode = "buttons";
       stopGeo();
       moveDiv.style.display = "";
       toggleButton.textContent = "Use Geolocation";
-      saveMovementMode(mode);
+      saveMovementMode(currentMode);
       setStatus("Button movement enabled.");
     },
 
     useGeolocation() {
       mode = "geo";
+      currentMode = "geo";
       moveDiv.style.display = "none";
       toggleButton.textContent = "Use Buttons";
-      saveMovementMode(mode);
+      saveMovementMode(currentMode);
       setStatus("Geolocation movement enabled.");
       startGeo();
     },
@@ -509,8 +514,7 @@ const movement = createMovementFacade();
 
 // toggle movement mode button behavior
 toggleButton.onclick = () => {
-  const saved = loadMovementMode();
-  if (saved === "geo") {
+  if (currentMode === "geo") {
     movement.useButtons();
   } else {
     movement.useGeolocation();
@@ -535,10 +539,6 @@ map.whenReady(() => {
 
   redrawCells();
 
-  const mode = loadMovementMode() ?? "buttons";
-  if (mode === "geo") {
-    movement.useGeolocation();
-  } else {
-    movement.useButtons();
-  }
+  // Always start in geolocation mode first
+  movement.useGeolocation();
 });
