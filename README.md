@@ -10,4 +10,8 @@ For this, i extended the game so the player can move across a world sized grid i
 
 ## D3.c: Object persistence
 
+For this, I extended the exisiting gaeplay so that the grid cells now retain their state even after you scroll away from them. In previous, we didn't have this sort of storage. I removed this behavior and used a lightweight data structure to store variables. I added a changedCells map that stores only teh cellst eh player has interected with, following the Flyweight pattern so that only modified cells occupy memory. Whenever the game needs to know a cell's token, getToken is first checked and if none exists, falls back to the normal spawn logic. As a result, once token is grabbed, it will eventually return.
+
+The redraw system stil rebukids the visible grid, but now without deleeting modification, when a cell goes offfscreen. This reaches gameplay requirement that a player's experience a persistent world state as they explore and return to previous locations.
+
 ## D3.d: Gameplay Across Real-world Space and Time

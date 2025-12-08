@@ -41,3 +41,21 @@ Play the game of 2048 outside by waking and collecting tokens!
 - [x] Forget off-screen cell state
 - [] Fix lag.
 - [x] Cleanup code for readability
+
+### D3.c: Object persistence
+
+#### Steps
+
+### D3.c: Object persistence
+
+#### Steps
+
+- [x] Keep using earth-spanning grid anchored at 0,0
+- [x] Store only modified cells in a `Map` (`changedCells`)
+- [x] Use `getToken` to merge default luck-based spawn with saved state
+- [x] Redraw visible cells from scratch on every `moveend`
+- [x] Stop trimming `changedCells` when cells go off-screen
+- [x] Make cells remember crafted/cleared tokens when you scroll away and back
+- [x] Keep movement buttons and interaction rules from previous
+- [x] Raise win target again for D3.c playtesting
+- [x] Cleanup pass and add comments showing memento.

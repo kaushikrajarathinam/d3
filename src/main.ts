@@ -6,17 +6,19 @@ import luck from "./_luck.ts";
 import "./style.css";
 
 // CONFIG
+
 const CELL_SIZE = 1e-4;
 const NEAR_RADIUS = 3;
 const SPAWN_CHANCE = 0.25;
-const WIN_VALUE = 128; // increased target here
-const GRID_RANGE = 25;
+const WIN_VALUE = 256;
+const GRID_RANGE = 15;
 const NULL_ISLAND = leaflet.latLng(0, 0);
 
 // TYPES / STATE
 type CellIndex = { i: number; j: number };
 
 const changedCells = new Map<string, number | null>();
+
 let held: number | null = null;
 let won = false;
 
@@ -40,6 +42,9 @@ controlPanelDiv.innerHTML = `
   <div>Target value: <span id="target-value">${WIN_VALUE}</span></div>
 `;
 
+statusPanelDiv.textContent =
+  "Use the arrows to move; click nearby cells with tokens to pick up, drop, or combine.";
+
 // movement buttons
 const moveDiv = document.createElement("div");
 moveDiv.id = "move-buttons";
@@ -57,9 +62,6 @@ addMoveButton("↑", 1, 0);
 addMoveButton("↓", -1, 0);
 addMoveButton("←", 0, -1);
 addMoveButton("→", 0, 1);
-
-statusPanelDiv.textContent =
-  "Use the arrows to move; click nearby cells with tokens to pick up, drop, or combine.";
 
 // HELPERS
 function key(i: number, j: number) {
@@ -92,7 +94,7 @@ function inRange(i: number, j: number) {
   return Math.max(di, dj) <= NEAR_RADIUS;
 }
 
-// spawn 2 or 4
+// Spawn 2 or 4, like 2048 (rare 4)
 function spawnToken(i: number, j: number): number | null {
   const r = luck([i, j, "spawn"].toString());
   if (r >= SPAWN_CHANCE) return null;
@@ -100,6 +102,7 @@ function spawnToken(i: number, j: number): number | null {
   return r < fourChance ? 4 : 2;
 }
 
+// memento lookup
 function getToken(i: number, j: number): number | null {
   const k = key(i, j);
   if (changedCells.has(k)) return changedCells.get(k) ?? null;
@@ -108,21 +111,6 @@ function getToken(i: number, j: number): number | null {
 
 function setToken(i: number, j: number, value: number | null) {
   changedCells.set(key(i, j), value);
-}
-
-// “forget” modifications that go offscreen
-function trimChangedCells(
-  iMin: number,
-  iMax: number,
-  jMin: number,
-  jMax: number,
-) {
-  for (const k of Array.from(changedCells.keys())) {
-    const [si, sj] = k.split(",").map(Number);
-    if (si < iMin || si > iMax || sj < jMin || sj > jMax) {
-      changedCells.delete(k);
-    }
-  }
 }
 
 function setStatus(msg: string) {
@@ -150,9 +138,10 @@ function movePlayer(di: number, dj: number) {
   const newI = pc.i + di;
   const newJ = pc.j + dj;
   const newPos = cellToLatLng(newI, newJ);
+
+  // Move the player marker and keep camera centered
   player.setLatLng(newPos);
-  map.panTo(newPos);
-  redrawCells();
+  map.setView(newPos, map.getZoom(), { animate: false });
 }
 
 // CELL INTERACTION
@@ -164,7 +153,7 @@ function clickCell(i: number, j: number) {
 
   const cellValue = getToken(i, j);
 
-  // not holding anything: pick up if there is a token
+  // Not holding anything: pick up if there is a token
   if (held === null) {
     if (cellValue === null) {
       setStatus("No token here.");
@@ -179,7 +168,7 @@ function clickCell(i: number, j: number) {
     return;
   }
 
-  // holding something, cell empty -->drop it
+  // Holding something, cell empty: drop it
   if (cellValue === null) {
     setToken(i, j, held);
     setStatus(`Placed token value ${held}.`);
@@ -189,7 +178,7 @@ function clickCell(i: number, j: number) {
     return;
   }
 
-  // holding something, cell has same value-->combine
+  // Holding something, cell has same value: combine (2048-style)
   if (cellValue === held) {
     const newValue = held * 2;
     setToken(i, j, newValue);
@@ -227,6 +216,7 @@ function drawCell(i: number, j: number): leaflet.Layer {
     },
   );
 
+  // Show numbers on all token cells
   if (hasToken) {
     rect.bindTooltip(String(value), {
       permanent: true,
@@ -252,8 +242,6 @@ function redrawCells() {
   const jMin = centerCell.j - GRID_RANGE;
   const jMax = centerCell.j + GRID_RANGE;
 
-  trimChangedCells(iMin, iMax, jMin, jMax);
-
   for (let i = iMin; i <= iMax; i++) {
     for (let j = jMin; j <= jMax; j++) {
       cellLayers.push(drawCell(i, j));
@@ -270,7 +258,7 @@ const map = leaflet.map(mapDiv, {
   minZoom: 19,
   maxZoom: 19,
   zoomControl: false,
-  scrollWheelZoom: true, // scroll to look around without moving player
+  scrollWheelZoom: true,
 });
 
 leaflet
