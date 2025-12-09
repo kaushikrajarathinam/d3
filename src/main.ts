@@ -331,12 +331,6 @@ function saveMovementMode(mode: MovementMode) {
   }
 }
 
-function _loadMovementMode(): MovementMode | null {
-  const raw = localStorage.getItem(STORAGE_MOVEMENT);
-  if (raw === "geo" || raw === "buttons") return raw;
-  return null;
-}
-
 // CELL INTERACTION
 function clickCell(i: number, j: number) {
   if (!inRange(i, j)) {
